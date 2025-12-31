@@ -79,54 +79,77 @@ export const searchMovies = async (query) => {
 
 // Fetch real box office data from Sacnilk scraper (Vercel serverless)
 export const getSacnilkMovies = async () => {
-  const response = await axios.get('/api/movies')
-  return response.data.data || []
+  try {
+    const response = await axios.get('/api/movies')
+    console.log('Sacnilk API response:', response.data)
+    return response.data.data || []
+  } catch (error) {
+    console.error('Error fetching Sacnilk data:', error)
+    console.error('Error details:', error.response?.data || error.message)
+    throw error
+  }
 }
 
 // Merge TMDb data (posters, info) with Sacnilk data (real box office)
 export const getIndianMoviesWithRealBoxOffice = async () => {
-  // Fetch both sources
-  const [sacnilkMovies, tmdbMovies] = await Promise.all([
-    getSacnilkMovies(),
-    getPopularIndianMovies()
-  ])
+  try {
+    // Fetch both sources
+    const [sacnilkMovies, tmdbMovies] = await Promise.all([
+      getSacnilkMovies(),
+      getPopularIndianMovies()
+    ])
 
-  // Create a map of TMDb movies by title for quick lookup
-  const tmdbMap = new Map()
-  tmdbMovies.forEach(movie => {
-    const cleanTitle = movie.title?.toLowerCase().trim() || movie.original_title?.toLowerCase().trim()
-    if (cleanTitle) {
-      tmdbMap.set(cleanTitle, movie)
+    console.log(`Fetched ${sacnilkMovies.length} movies from Sacnilk`)
+    console.log(`Fetched ${tmdbMovies.length} movies from TMDb`)
+
+    // If no Sacnilk data, use TMDb
+    if (!sacnilkMovies || sacnilkMovies.length === 0) {
+      console.warn('No Sacnilk data available, using TMDb only')
+      return tmdbMovies
     }
-  })
 
-  // Merge: Use Sacnilk collections + TMDb for images/info
-  const mergedMovies = sacnilkMovies.map(sacnilkMovie => {
-    const cleanTitle = sacnilkMovie.title.toLowerCase().trim()
-    const tmdbMovie = tmdbMap.get(cleanTitle) || 
-                     Array.from(tmdbMap.values()).find(m => 
-                       m.title?.toLowerCase().includes(cleanTitle.split(' ')[0]) ||
-                       cleanTitle.includes(m.title?.toLowerCase().split(' ')[0])
-                     )
+    // Create a map of TMDb movies by title for quick lookup
+    const tmdbMap = new Map()
+    tmdbMovies.forEach(movie => {
+      const cleanTitle = movie.title?.toLowerCase().trim() || movie.original_title?.toLowerCase().trim()
+      if (cleanTitle) {
+        tmdbMap.set(cleanTitle, movie)
+      }
+    })
 
-    return {
-      id: sacnilkMovie.id,
-      rank: sacnilkMovie.rank,
-      title: sacnilkMovie.title,
-      collection: sacnilkMovie.collection,
-      year: sacnilkMovie.year,
-      dailyCollections: sacnilkMovie.dailyCollections,
-      // TMDb data
-      poster_path: tmdbMovie?.poster_path,
-      backdrop_path: tmdbMovie?.backdrop_path,
-      overview: tmdbMovie?.overview,
-      vote_average: tmdbMovie?.vote_average,
-      vote_count: tmdbMovie?.vote_count,
-      release_date: tmdbMovie?.release_date,
-      original_language: tmdbMovie?.original_language,
-      tmdb_id: tmdbMovie?.id
-    }
-  })
+    // Merge: Use Sacnilk collections + TMDb for images/info
+    const mergedMovies = sacnilkMovies.map(sacnilkMovie => {
+      const cleanTitle = sacnilkMovie.title.toLowerCase().trim()
+      const tmdbMovie = tmdbMap.get(cleanTitle) || 
+                       Array.from(tmdbMap.values()).find(m => 
+                         m.title?.toLowerCase().includes(cleanTitle.split(' ')[0]) ||
+                         cleanTitle.includes(m.title?.toLowerCase().split(' ')[0])
+                       )
 
-  return mergedMovies
+      return {
+        id: sacnilkMovie.id,
+        rank: sacnilkMovie.rank,
+        title: sacnilkMovie.title,
+        collection: sacnilkMovie.collection,
+        year: sacnilkMovie.year,
+        dailyCollections: sacnilkMovie.dailyCollections,
+        // TMDb data
+        poster_path: tmdbMovie?.poster_path,
+        backdrop_path: tmdbMovie?.backdrop_path,
+        overview: tmdbMovie?.overview,
+        vote_average: tmdbMovie?.vote_average,
+        vote_count: tmdbMovie?.vote_count,
+        release_date: tmdbMovie?.release_date,
+        original_language: tmdbMovie?.original_language,
+        tmdb_id: tmdbMovie?.id
+      }
+    })
+
+    return mergedMovies
+  } catch (error) {
+    console.error('Error in getIndianMoviesWithRealBoxOffice:', error)
+    // Fallback to TMDb if Sacnilk fails
+    console.warn('Falling back to TMDb data only')
+    return getPopularIndianMovies()
+  }
 }

@@ -67,6 +67,13 @@ export default async function handler(req, res) {
       }
     });
 
+    console.log(`Scraped ${movies.length} movies`);
+
+    // If no movies scraped, throw error
+    if (movies.length === 0) {
+      throw new Error('No movies found in scraping - website structure may have changed');
+    }
+
     // Update cache
     cache.data = movies.slice(0, 100); // Top 100 movies
     cache.timestamp = now;
@@ -80,9 +87,10 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('Scraping error:', error.message);
+    console.error('Full error:', error);
     
     // Return cached data if available even if scraping fails
-    if (cache.data) {
+    if (cache.data && cache.data.length > 0) {
       return res.status(200).json({
         data: cache.data,
         cached: true,
@@ -91,9 +99,12 @@ export default async function handler(req, res) {
       });
     }
 
+    // If no cache, return error with more details
     return res.status(500).json({
       error: 'Failed to fetch box office data',
-      message: error.message
+      message: error.message,
+      details: error.toString(),
+      scrapedCount: movies?.length || 0
     });
   }
 }
