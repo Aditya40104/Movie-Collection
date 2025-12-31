@@ -15,7 +15,7 @@ import {
   Filler
 } from 'chart.js'
 import ChartDataLabels from 'chartjs-plugin-datalabels'
-import { getMovieDetails, formatToCrores } from '../services/api'
+import { getIndianMoviesWithRealBoxOffice, formatToCrores } from '../services/api'
 
 ChartJS.register(
   CategoryScale,
@@ -49,10 +49,17 @@ function Compare() {
 
     try {
       setLoading(true)
-      const ids = moviesParam.split(',')
-      const moviePromises = ids.map(id => getMovieDetails(id))
-      const movies = await Promise.all(moviePromises)
-      setSelectedMovies(movies.filter(m => m !== null))
+      const ids = moviesParam.split(',').map(id => parseInt(id))
+      
+      // Fetch all movies with merged Sacnilk + TMDb data
+      const allMovies = await getIndianMoviesWithRealBoxOffice()
+      
+      // Filter to get only selected movies by ID
+      const selected = ids.map(id => 
+        allMovies.find(m => m.id === id || m.tmdb_id === id)
+      ).filter(m => m !== undefined)
+      
+      setSelectedMovies(selected)
     } catch (error) {
       console.error('Error loading movies:', error)
     } finally {
@@ -60,17 +67,36 @@ function Compare() {
     }
   }
 
-  const formatCurrency = (amount) => {
-    return formatToCrores(amount)
+  const formatCurrency = (collectionString) => {
+    // If it's already a formatted Sacnilk collection string (e.g., "917.00 Cr")
+    if (typeof collectionString === 'string' && collectionString.includes('Cr')) {
+      return `₹${collectionString}`
+    }
+    // Otherwise use the formatter
+    return formatToCrores(collectionString)
   }
 
-  // Generate mock daily data for comparison
-  const generateMockDailyData = (movie) => {
-    if (!movie.revenue) return []
+  // Generate daily data from Sacnilk or mock for TMDb
+  const generateDailyData = (movie) => {
+    // If movie has Sacnilk daily collections, use them
+    if (movie.dailyCollections && movie.dailyCollections.length > 0) {
+      return movie.dailyCollections.slice(0, 6).map(d => ({
+        day: d.date || `Day ${d.day}`,
+        collection: parseFloat(d.collection) || 0
+      }))
+    }
+    
+    // Otherwise generate mock data from collection or revenue
+    const total = movie.collection 
+      ? parseFloat(movie.collection.replace(/[^0-9.]/g, '')) 
+      : (movie.revenue * 83) / 10000000
+    
+    if (!total || total === 0) return []
+    
     const days = ['Day 1', 'Day 3', 'Day 7', 'Day 14', 'Day 21', 'Day 28']
     return days.map((day, i) => ({
       day,
-      collection: (movie.revenue * 83 / 10000000) * (1 - i * 0.15) / 6
+      collection: total * (1 - i * 0.15) / 6
     }))
   }
 
@@ -85,7 +111,7 @@ function Compare() {
   const dailyComparisonData = {
     labels: ['Day 1', 'Day 3', 'Day 7', 'Day 14', 'Day 21', 'Day 28'],
     datasets: selectedMovies.map((movie, index) => {
-      const dailyData = generateMockDailyData(movie)
+      const dailyData = generateDailyData(movie)
       return {
         label: movie.title || movie.original_title,
         data: dailyData.map(d => d.collection),
@@ -97,13 +123,24 @@ function Compare() {
     })
   }
 
+  // Helper to get collection value in crores
+  const getCollectionInCrores = (movie) => {
+    if (movie.collection) {
+      return parseFloat(movie.collection.replace(/[^0-9.]/g, '')) || 0
+    }
+    if (movie.revenue) {
+      return (movie.revenue * 83) / 10000000
+    }
+    return 0
+  }
+
   // Total Collection Comparison
   const totalComparisonData = {
     labels: selectedMovies.map(m => m.title || m.original_title),
     datasets: [
       {
-        label: 'Revenue (₹ Cr)',
-        data: selectedMovies.map(m => (m.revenue * 83) / 10000000 || 0),
+        label: 'Worldwide Collection (₹ Cr)',
+        data: selectedMovies.map(m => getCollectionInCrores(m)),
         backgroundColor: 'rgba(34, 197, 94, 0.8)',
       },
       {
@@ -191,33 +228,33 @@ function Compare() {
                 <X className="w-4 h-4" />
               </button>
               <div className="h-48 bg-gradient-to-br from-gray-200 to-gray-300">
-                <img
-                  src={movie.poster}
-                  alt={movie.title}
-                  className="w-full h-full object-cover"
-                />
+                {movie.poster_path ? (
+                  <img
+                    src={`https://image.tmdb.org/t/p/w500${movie.poster_path}`}
+                    alt={movie.title}
+                    className="w-full h-full object-contain"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <span className="text-gray-400 text-4xl">🎬</span>
+                  </div>
+                )}
               </div>
               <div className="p-4">
                 <h3 className="text-xl font-bold text-gray-800 mb-2">
                   {movie.title}
                 </h3>
                 <p className="text-sm text-gray-600 mb-2">
-                  {movie.releaseDate} • {movie.language}
+                  {movie.year || movie.release_date?.split('-')[0]} • {movie.original_language || 'Hindi'}
                 </p>
                 <div className="space-y-1">
                   <div className="flex justify-between">
                     <span className="text-sm text-gray-600">Worldwide</span>
                     <span className="font-bold text-purple-600 flex items-center text-sm">
                       <IndianRupee className="w-3 h-3" />
-                      {formatCurrency(movie.worldwideCollection)}
+                      {movie.collection || formatCurrency(movie.revenue)}
                     </span>
                   </div>
-                  {movie.trend && (
-                    <div className="flex items-center space-x-1 text-green-600 text-xs">
-                      <TrendingUp className="w-3 h-3" />
-                      <span>{movie.trend}</span>
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
@@ -267,16 +304,16 @@ function Compare() {
                     <tr key={movie.id} className="border-b border-gray-100 hover:bg-blue-50 transition-colors">
                       <td className="py-3 px-4 font-medium">{movie.title}</td>
                       <td className="py-3 px-4 text-right font-bold text-purple-600">
-                        {formatCurrency(movie.worldwideCollection)}
+                        {movie.collection || formatCurrency(movie.revenue)}
                       </td>
                       <td className="py-3 px-4 text-right font-bold text-green-600">
-                        {formatCurrency(movie.indiaCollection)}
+                        N/A
                       </td>
                       <td className="py-3 px-4 text-right font-bold text-blue-600">
-                        {formatCurrency(movie.overseas)}
+                        N/A
                       </td>
                       <td className="py-3 px-4 text-right text-gray-600">
-                        {movie.language}
+                        {movie.original_language || 'Hindi'}
                       </td>
                     </tr>
                   ))}
