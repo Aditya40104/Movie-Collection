@@ -132,6 +132,7 @@ function Compare() {
     labels: ['Day 1', 'Day 3', 'Day 7', 'Day 14', 'Day 21', 'Day 28'],
     datasets: selectedMovies.map((movie, index) => {
       const dailyData = generateDailyData(movie)
+      console.log(`Daily data for ${movie.title}:`, dailyData)
       return {
         label: movie.title || movie.original_title,
         data: dailyData.map(d => d.collection),
@@ -142,6 +143,8 @@ function Compare() {
       }
     })
   }
+
+  console.log('Daily comparison data:', dailyComparisonData)
 
   // Helper to get collection value in crores
   const getCollectionInCrores = (movie) => {
@@ -188,6 +191,8 @@ function Compare() {
     ]
   }
 
+  console.log('Total comparison data:', totalComparisonData)
+
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
@@ -227,6 +232,15 @@ function Compare() {
         <button onClick={() => navigate('/')} className="btn-primary">
           Go Back to Home
         </button>
+      </div>
+    )
+  }
+
+  if (loading) {
+    return (
+      <div className="container mx-auto px-4 py-16 text-center">
+        <Loader className="w-12 h-12 animate-spin mx-auto mb-4 text-blue-600" />
+        <h2 className="text-2xl font-bold text-gray-800">Loading movies...</h2>
       </div>
     )
   }
