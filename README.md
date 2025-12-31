@@ -1,6 +1,6 @@
 # Indian Movie Collection Tracker 🎬
 
-A modern, real-time box office tracking website for Indian movies with comparison features, daily collection data, and beautiful visualizations.
+A modern, real-time box office tracking website for Indian movies with comparison features, daily collection data, and beautiful visualizations powered by Sacnilk data.
 
 ## Features ✨
 
